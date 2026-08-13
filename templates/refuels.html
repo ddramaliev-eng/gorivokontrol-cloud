@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}Зареждания - GorivoKontrol Cloud{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h3>Зареждания</h3>
+  <a href="{{ url_for('refuel_add') }}" class="btn btn-primary">+ Добави</a>
+</div>
+
+<form method="get" class="row g-2 mb-3">
+  <div class="col-auto">
+    <select name="vehicle" class="form-select">
+      <option value="">(всички автомобили)</option>
+      {% for v in vehicles %}
+      <option value="{{ v['registration'] }}" {% if vehicle_filter==v['registration'] %}selected{% endif %}>{{ v['registration'] }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="col-auto">
+    <input type="text" name="q" class="form-control" placeholder="Търси (дата или км)" value="{{ search }}">
+  </div>
+  <div class="col-auto">
+    <button type="submit" class="btn btn-outline-secondary">Приложи</button>
+  </div>
+</form>
+
+<div class="table-responsive">
+<table class="table table-sm table-striped bg-white shadow-sm">
+  <thead>
+    <tr>
+      <th>Автомобил</th><th>Дата</th><th>Км</th><th>Литри</th><th>Цена/л</th><th>Общо</th><th>Валута</th><th>Бележка</th><th></th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for r in items %}
+    <tr>
+      <td>{{ r.registration }}</td>
+      <td>{{ r.date }}</td>
+      <td>{{ '%.0f'|format(r.odometer) }}</td>
+      <td>{{ '%.2f'|format(r.liters) }}</td>
+      <td>{{ '%.2f'|format(r.price) }}</td>
+      <td>{{ '%.2f'|format(r.total) }}</td>
+      <td>{{ r.currency }}</td>
+      <td>{{ r.note or '' }}</td>
+      <td class="text-end">
+        <a href="{{ url_for('refuel_edit', rid=r.id) }}" class="btn btn-sm btn-warning">Редактирай</a>
+        <form method="post" action="{{ url_for('refuel_delete', rid=r.id) }}" class="d-inline"
+              onsubmit="return confirm('Сигурни ли сте, че искате да изтриете този запис?');">
+          <button type="submit" class="btn btn-sm btn-danger">Изтрий</button>
+        </form>
+      </td>
+    </tr>
+    {% else %}
+    <tr><td colspan="9" class="text-center text-muted">Няма записи.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

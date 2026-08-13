@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}Подробен изглед - GorivoKontrol Cloud{% endblock %}
+{% block content %}
+<h3 class="mb-3">Подробен изглед - зареждания</h3>
+
+<form method="get" class="row g-2 mb-3">
+  <div class="col-auto">
+    <select name="vehicle" class="form-select">
+      <option value="">(всички)</option>
+      {% for v in vehicles %}
+      <option value="{{ v }}" {% if vehicle==v %}selected{% endif %}>{{ v }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="col-auto">
+    <select name="fuel" class="form-select">
+      <option value="">(всички горива)</option>
+      {% for f in fuel_types %}
+      <option value="{{ f }}" {% if fuel_filter==f %}selected{% endif %}>{{ f }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="col-auto">
+    <input type="text" name="q" class="form-control" placeholder="Търси" value="{{ search }}">
+  </div>
+  <div class="col-auto">
+    <button type="submit" class="btn btn-outline-secondary">Приложи</button>
+  </div>
+  <div class="col-auto">
+    <a class="btn btn-outline-success" href="{{ url_for('reports_detailed_export', vehicle=vehicle, fuel=fuel_filter) }}">Експорт в Excel</a>
+  </div>
+</form>
+
+<div class="table-responsive">
+<table class="table table-sm table-striped bg-white shadow-sm">
+  <thead>
+    <tr><th>Дата</th><th>Автомобил</th><th>Гориво</th><th>Км</th><th>Литри</th><th>Цена/л</th><th>Общо</th><th>Валута</th><th>Бележка</th></tr>
+  </thead>
+  <tbody>
+    {% for r in items %}
+    <tr>
+      <td>{{ r.date }}</td>
+      <td>{{ r.registration }}</td>
+      <td>{{ r.fuel_type or '' }}</td>
+      <td>{{ '%.0f'|format(r.odometer) }}</td>
+      <td>{{ '%.2f'|format(r.liters) }}</td>
+      <td>{{ '%.2f'|format(r.price) }}</td>
+      <td>{{ '%.2f'|format(r.total) }}</td>
+      <td>{{ r.currency }}</td>
+      <td>{{ r.note or '' }}</td>
+    </tr>
+    {% else %}
+    <tr><td colspan="9" class="text-center text-muted">Няма записи.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}Начало - GorivoKontrol Cloud{% endblock %}
+{% block content %}
+<h2 class="mb-3">GorivoKontrol Cloud</h2>
+<p class="text-muted">Следете зарежданията, правете отчети и експортирайте в Excel.</p>
+<p class="currency-note">💱 Валутен преход: след 31.12.2025 цените са в евро (€) — курс {{ eur_rate }} лв/€.</p>
+
+<div class="row g-3 mt-3">
+  <div class="col-md-3">
+    <div class="card text-center shadow-sm">
+      <div class="card-body">
+        <div class="fs-2">{{ total_vehicles }}</div>
+        <div class="text-muted">Автомобили</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card text-center shadow-sm">
+      <div class="card-body">
+        <div class="fs-2">{{ total_refuels }}</div>
+        <div class="text-muted">Зареждания</div>
+      </div>
+    </div>
+  </div>
+  {% for fuel_type, count in fuel_stats %}
+  <div class="col-md-3">
+    <div class="card text-center shadow-sm">
+      <div class="card-body">
+        <div class="fs-2">{{ count }}</div>
+        <div class="text-muted">{{ fuel_type or "(без тип)" }}</div>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+<div class="mt-4">
+  <a href="{{ url_for('vehicle_add') }}" class="btn btn-success">+ Автомобил</a>
+  <a href="{{ url_for('refuel_add') }}" class="btn btn-primary">+ Зареждане</a>
+  <a href="{{ url_for('reports') }}" class="btn btn-outline-secondary">📊 Отчети</a>
+</div>
+{% endblock %}

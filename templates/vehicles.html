@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}Автомобили - GorivoKontrol Cloud{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h3>Управление на автомобили</h3>
+  <a href="{{ url_for('vehicle_add') }}" class="btn btn-success">+ Добави</a>
+</div>
+<div class="table-responsive">
+<table class="table table-sm table-striped bg-white shadow-sm">
+  <thead>
+    <tr>
+      <th>Рег. номер</th><th>Модел</th><th>Година</th><th>Гориво</th><th>Нач. км</th><th></th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for v in vehicles %}
+    <tr>
+      <td>{{ v['registration'] }}</td>
+      <td>{{ v['model'] or '' }}</td>
+      <td>{{ v['year'] or '' }}</td>
+      <td>{{ v['fuel_type'] or '' }}</td>
+      <td>{{ '%.0f'|format(v['start_odometer'] or 0) }}</td>
+      <td class="text-end">
+        <a href="{{ url_for('vehicle_edit', vid=v['id']) }}" class="btn btn-sm btn-warning">Редактирай</a>
+        <form method="post" action="{{ url_for('vehicle_delete', vid=v['id']) }}" class="d-inline"
+              onsubmit="return confirm('Сигурни ли сте, че искате да изтриете {{ v['registration'] }}? Всички зареждания ще бъдат изтрити.');">
+          <button type="submit" class="btn btn-sm btn-danger">Изтрий</button>
+        </form>
+      </td>
+    </tr>
+    {% else %}
+    <tr><td colspan="6" class="text-center text-muted">Няма добавени автомобили.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

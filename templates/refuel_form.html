@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}{{ title }} - GorivoKontrol Cloud{% endblock %}
+{% block content %}
+<h3 class="mb-3">{{ title }}</h3>
+
+{% if warning %}
+<div class="alert alert-warning">
+  <strong>Внимание:</strong> {{ warning }}
+  <form method="post" class="mt-2">
+    <input type="hidden" name="confirm" value="1">
+    <input type="hidden" name="vehicle_id" value="{{ values.get('vehicle_id','') }}">
+    <input type="hidden" name="date" value="{{ values.get('date','') }}">
+    <input type="hidden" name="odometer" value="{{ values.get('odometer','') }}">
+    <input type="hidden" name="liters" value="{{ values.get('liters','') }}">
+    <input type="hidden" name="price" value="{{ values.get('price','') }}">
+    <input type="hidden" name="note" value="{{ values.get('note','') }}">
+    <button type="submit" class="btn btn-warning btn-sm">Потвърди и запази въпреки това</button>
+  </form>
+</div>
+{% endif %}
+
+<div class="card shadow-sm" style="max-width:520px;">
+  <div class="card-body">
+    <form method="post">
+      <div class="mb-3">
+        <label class="form-label">Автомобил</label>
+        <select name="vehicle_id" class="form-select" required>
+          <option value=""></option>
+          {% for v in vehicles %}
+          <option value="{{ v['id'] }}" {% if values.get('vehicle_id')|string == v['id']|string %}selected{% endif %}>{{ v['registration'] }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="mb-3">
+        <label class="form-label">Дата</label>
+        <input type="date" name="date" class="form-control" required value="{{ values.get('date','') }}">
+      </div>
+      <div class="mb-3">
+        <label class="form-label">Километри</label>
+        <input type="number" step="0.01" name="odometer" class="form-control" required value="{{ values.get('odometer','') }}">
+      </div>
+      <div class="mb-3">
+        <label class="form-label">Литри</label>
+        <input type="number" step="0.01" name="liters" class="form-control" required value="{{ values.get('liters','') }}">
+      </div>
+      <div class="mb-3">
+        <label class="form-label">Цена/л</label>
+        <input type="number" step="0.001" name="price" class="form-control" required value="{{ values.get('price','') }}">
+      </div>
+      <div class="mb-3">
+        <label class="form-label">Бележка</label>
+        <input type="text" name="note" class="form-control" value="{{ values.get('note','') }}">
+      </div>
+      <button type="submit" class="btn btn-success">Запази</button>
+      <a href="{{ url_for('refuels_list') }}" class="btn btn-secondary">Откажи</a>
+    </form>
+  </div>
+</div>
+{% endblock %}

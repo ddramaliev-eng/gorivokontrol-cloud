@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}{{ title }} - GorivoKontrol Cloud{% endblock %}
+{% block content %}
+<h3 class="mb-3">{{ title }}</h3>
+<div class="card shadow-sm" style="max-width:480px;">
+  <div class="card-body">
+    <form method="post">
+      <div class="mb-3">
+        <label class="form-label">Рег. номер</label>
+        <input type="text" name="registration" class="form-control" required
+               value="{{ vehicle['registration'] if vehicle else '' }}">
+      </div>
+      <div class="mb-3">
+        <label class="form-label">Модел</label>
+        <input type="text" name="model" class="form-control" value="{{ vehicle['model'] if vehicle else '' }}">
+      </div>
+      <div class="mb-3">
+        <label class="form-label">Година</label>
+        <input type="number" name="year" class="form-control" value="{{ vehicle['year'] if vehicle else '' }}">
+      </div>
+      <div class="mb-3">
+        <label class="form-label">Гориво</label>
+        <select name="fuel_type" class="form-select">
+          <option value=""></option>
+          {% for f in fuel_types %}
+          <option value="{{ f }}" {% if vehicle and vehicle['fuel_type']==f %}selected{% endif %}>{{ f }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="mb-3">
+        <label class="form-label">Начални км</label>
+        <input type="number" step="0.01" name="start_odometer" class="form-control"
+               value="{{ vehicle['start_odometer'] if vehicle else '' }}">
+      </div>
+      <button type="submit" class="btn btn-success">Запази</button>
+      <a href="{{ url_for('vehicles_list') }}" class="btn btn-secondary">Откажи</a>
+    </form>
+  </div>
+</div>
+{% endblock %}

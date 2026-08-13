@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+{% block title %}Отчети - GorivoKontrol Cloud{% endblock %}
+{% block content %}
+<h3 class="mb-3">Отчети</h3>
+
+<form method="get" class="row g-2 align-items-end mb-4">
+  <input type="hidden" name="run" value="1">
+  <div class="col-auto">
+    <label class="form-label">Автомобил</label>
+    <select name="vehicle" class="form-select">
+      <option value="" {% if not vehicle %}selected{% endif %}>(всички)</option>
+      {% for v in vehicles %}
+      <option value="{{ v }}" {% if vehicle==v %}selected{% endif %}>{{ v }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="col-auto">
+    <label class="form-label">Вид гориво</label>
+    <select name="fuel" class="form-select">
+      <option value="" {% if not fuel_filter %}selected{% endif %}>(всички)</option>
+      {% for f in fuel_types %}
+      <option value="{{ f }}" {% if fuel_filter==f %}selected{% endif %}>{{ f }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="col-auto">
+    <label class="form-label d-block">Групиране</label>
+    <div class="btn-group" role="group">
+      <input type="radio" class="btn-check" name="grouping" id="g-month" value="month" {% if grouping=='month' %}checked{% endif %}>
+      <label class="btn btn-outline-secondary" for="g-month">Месечен</label>
+      <input type="radio" class="btn-check" name="grouping" id="g-year" value="year" {% if grouping=='year' %}checked{% endif %}>
+      <label class="btn btn-outline-secondary" for="g-year">Годишен</label>
+    </div>
+  </div>
+  <div class="col-auto">
+    <button type="submit" class="btn btn-primary">Покажи</button>
+  </div>
+  {% if report %}
+  <div class="col-auto">
+    <a class="btn btn-outline-success" href="{{ url_for('reports_export', vehicle=vehicle, fuel=fuel_filter, grouping=grouping) }}">Експорт в Excel</a>
+  </div>
+  {% endif %}
+</form>
+
+{% if report %}
+<div class="card shadow-sm mb-4">
+  <div class="card-body">
+    <canvas id="chart" height="90"></canvas>
+  </div>
+</div>
+
+<div class="d-flex flex-wrap gap-4 mb-3">
+  <div><strong>Общо гориво:</strong> {{ '%.2f'|format(report.total_liters) }} л</div>
+  <div><strong>Общо платено:</strong> {{ '%.2f'|format(report.total_price_bgn) }} лв</div>
+  <div><strong>Изминати км:</strong> {{ '%.0f'|format(report.total_km) }} км</div>
+  <div><strong>Среден разход:</strong> {{ '%.2f'|format(report.avg100) }} л/100 км</div>
+</div>
+{% if report.mixed_currency %}
+<p class="currency-note">* Периодът обхваща и суми в евро - преизчислени в лева по курс 1 € = {{ eur_rate }} лв.</p>
+{% endif %}
+
+<div class="table-responsive">
+<table class="table table-sm table-striped bg-white shadow-sm">
+  <thead><tr><th>Период</th><th>Литри</th><th>Платено</th><th>Валута</th><th>Изминати км</th><th>Л/100км</th></tr></thead>
+  <tbody>
+    {% for lbl in report.labels %}
+    <tr>
+      <td>{{ lbl }}</td>
+      <td>{{ '%.2f'|format(report.liters[loop.index0]) }}</td>
+      <td>{{ '%.2f'|format(report.prices[loop.index0]) }}</td>
+      <td>{{ report.currencies[loop.index0] }}</td>
+      <td>{{ '%.0f'|format(report.kms[loop.index0]) }}</td>
+      <td>{{ '%.2f'|format(report.consumptions[loop.index0]) }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script>
+const ctx = document.getElementById('chart');
+new Chart(ctx, {
+  data: {
+    labels: {{ report.labels|tojson }},
+    datasets: [
+      {
+        type: 'bar',
+        label: 'Литри',
+        data: {{ report.liters|tojson }},
+        backgroundColor: 'rgba(46, 184, 92, 0.55)',
+        yAxisID: 'y'
+      },
+      {
+        type: 'line',
+        label: 'Платено (в местната за периода валута)',
+        data: {{ report.prices|tojson }},
+        borderColor: 'rgb(37, 99, 235)',
+        backgroundColor: 'rgb(37, 99, 235)',
+        yAxisID: 'y1'
+      }
+    ]
+  },
+  options: {
+    responsive: true,
+    scales: {
+      y: { type: 'linear', position: 'left', title: { display: true, text: 'Литри' } },
+      y1: { type: 'linear', position: 'right', title: { display: true, text: 'Платено' }, grid: { drawOnChartArea: false } }
+    }
+  }
+});
+</script>
+{% elif vehicle or fuel_filter %}
+<p class="text-muted">Няма данни за избраните филтри.</p>
+{% endif %}
+{% endblock %}
