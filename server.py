@@ -40,6 +40,7 @@ EUR_PERIOD_THRESHOLD = (EUR_TRANSITION_DATE + timedelta(days=1)).strftime("%Y")
 
 app = Flask(__name__)
 app.secret_key = SECRET_KEY
+app.config["MAX_CONTENT_LENGTH"] = 100 * 1024 * 1024  # 100 MB - достатъчно за data.db качване
 
 
 # ---------------- Бизнес логика (пренесена от v2.3) ----------------
@@ -771,6 +772,60 @@ def backup():
         abort(404)
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     return send_file(DB_PATH, as_attachment=True, download_name=f"data_backup_{ts}.db")
+
+
+def _is_valid_gorivokontrol_db(path):
+    """Бърза проверка, че файлът е SQLite база с очакваните таблици - за да не
+    заменим текущата база с нещо невалидно/повредено."""
+    try:
+        test_conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+        tables = {
+            r[0] for r in test_conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            ).fetchall()
+        }
+        test_conn.close()
+        return {"vehicles", "refuels"}.issubset(tables)
+    except Exception:
+        return False
+
+
+@app.route("/restore", methods=["GET", "POST"])
+@login_required
+def restore():
+    if request.method == "POST":
+        f = request.files.get("dbfile")
+        if not f or f.filename == "":
+            flash("Не е избран файл.", "danger")
+            return redirect(url_for("restore"))
+        if not f.filename.lower().endswith(".db"):
+            flash("Файлът трябва да е .db (SQLite база данни).", "danger")
+            return redirect(url_for("restore"))
+
+        os.makedirs(DATA_DIR, exist_ok=True)
+        tmp_path = os.path.join(DATA_DIR, "_upload_tmp.db")
+        f.save(tmp_path)
+
+        if not _is_valid_gorivokontrol_db(tmp_path):
+            os.remove(tmp_path)
+            flash("Файлът не изглежда да е валидна GorivoKontrol база данни (липсват таблиците 'vehicles'/'refuels').", "danger")
+            return redirect(url_for("restore"))
+
+        # затваряме евентуална отворена връзка към текущата база в тази заявка
+        close_db()
+
+        # архивираме текущата (облачна) база, преди да я презапишем - за всеки случай
+        if os.path.exists(DB_PATH):
+            ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+            backup_path = os.path.join(DATA_DIR, f"data_backup_pre_restore_{ts}.db")
+            import shutil
+            shutil.copy2(DB_PATH, backup_path)
+
+        os.replace(tmp_path, DB_PATH)
+        flash("Базата данни е възстановена успешно от качения файл.", "success")
+        return redirect(url_for("home"))
+
+    return render_template("restore.html")
 
 
 # ---------------- Health check (за Railway) ----------------

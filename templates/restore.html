@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Възстанови база - GorivoKontrol Cloud{% endblock %}
+{% block content %}
+<h3 class="mb-3">Възстанови база данни от файл</h3>
+
+<div class="alert alert-warning">
+  <strong>Внимание:</strong> качването на файл тук ще <u>замени</u> текущата облачна
+  база данни изцяло с файла, който избереш. Текущата облачна база автоматично
+  се архивира преди замяната (може да я свалиш после през „⬇ Резервно копие“
+  под ново име, ако потрябва), но е добре да си сигурен преди да продължиш.
+</div>
+
+<div class="card shadow-sm" style="max-width:520px;">
+  <div class="card-body">
+    <form method="post" enctype="multipart/form-data">
+      <div class="mb-3">
+        <label class="form-label">Избери .db файл (напр. стария data.db от desktop версията)</label>
+        <input type="file" name="dbfile" accept=".db" class="form-control" required>
+      </div>
+      <div class="form-check mb-3">
+        <input class="form-check-input" type="checkbox" id="confirm" required>
+        <label class="form-check-label" for="confirm">
+          Разбирам, че това ще замени текущата облачна база данни.
+        </label>
+      </div>
+      <button type="submit" class="btn btn-danger">Възстанови базата</button>
+      <a href="{{ url_for('home') }}" class="btn btn-secondary">Откажи</a>
+    </form>
+  </div>
+</div>
+{% endblock %}
