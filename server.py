@@ -375,6 +375,11 @@ def refuel_add():
             odo = validate_positive_float(request.form.get("odometer"), "Километри")
             liters = validate_positive_float(request.form.get("liters"), "Литри")
             price = validate_positive_float(request.form.get("price"), "Цена")
+            # ПОПРАВКА: сумата вече е отделно поле (автоматично се предлага
+            # литри*цена, но потребителят може да я коригира ръчно - напр. ако
+            # касовата бележка се различава с стотинка заради закръгляне).
+            total_raw = request.form.get("total")
+            total = validate_positive_float(total_raw, "Сума") if total_raw else (liters * price)
             note = (request.form.get("note") or "").strip()
 
             max_odo = get_max_odometer(db, vid)
@@ -386,7 +391,6 @@ def refuel_add():
                     "неверни изчисления на изминати км/разход."
                 )
             else:
-                total = liters * price
                 db.execute(
                     """INSERT INTO refuels (vehicle_id, date, odometer, liters, price_per_liter, total_price, note)
                        VALUES (?, ?, ?, ?, ?, ?, ?)""",
@@ -417,7 +421,7 @@ def refuel_edit(rid):
     form_values = {
         "vehicle_id": refuel["vehicle_id"], "date": refuel["date"],
         "odometer": refuel["odometer"], "liters": refuel["liters"],
-        "price": refuel["price_per_liter"], "note": refuel["note"],
+        "price": refuel["price_per_liter"], "total": refuel["total_price"], "note": refuel["note"],
     }
 
     if request.method == "POST":
@@ -429,6 +433,8 @@ def refuel_edit(rid):
             odo = validate_positive_float(request.form.get("odometer"), "Километри")
             liters = validate_positive_float(request.form.get("liters"), "Литри")
             price = validate_positive_float(request.form.get("price"), "Цена")
+            total_raw = request.form.get("total")
+            total = validate_positive_float(total_raw, "Сума") if total_raw else (liters * price)
             note = (request.form.get("note") or "").strip()
 
             max_odo = get_max_odometer(db, vid, exclude_refuel_id=rid)
@@ -440,7 +446,6 @@ def refuel_edit(rid):
                     "неверни изчисления на изминати км/разход."
                 )
             else:
-                total = liters * price
                 db.execute(
                     """UPDATE refuels SET vehicle_id=?, date=?, odometer=?, liters=?, price_per_liter=?, total_price=?, note=?
                        WHERE id=?""",

@@ -13,6 +13,7 @@
     <input type="hidden" name="odometer" value="{{ values.get('odometer','') }}">
     <input type="hidden" name="liters" value="{{ values.get('liters','') }}">
     <input type="hidden" name="price" value="{{ values.get('price','') }}">
+    <input type="hidden" name="total" value="{{ values.get('total','') }}">
     <input type="hidden" name="note" value="{{ values.get('note','') }}">
     <button type="submit" class="btn btn-warning btn-sm">Потвърди и запази въпреки това</button>
   </form>
@@ -41,11 +42,16 @@
       </div>
       <div class="mb-3">
         <label class="form-label">Литри</label>
-        <input type="number" step="0.01" name="liters" class="form-control" required value="{{ values.get('liters','') }}">
+        <input type="number" step="0.01" id="liters" name="liters" class="form-control" required value="{{ values.get('liters','') }}">
       </div>
       <div class="mb-3">
         <label class="form-label">Цена/л</label>
-        <input type="number" step="0.001" name="price" class="form-control" required value="{{ values.get('price','') }}">
+        <input type="number" step="0.001" id="price" name="price" class="form-control" required value="{{ values.get('price','') }}">
+      </div>
+      <div class="mb-3">
+        <label class="form-label">Сума</label>
+        <input type="number" step="0.01" id="total" name="total" class="form-control" required value="{{ values.get('total','') }}">
+        <div class="form-text">Предложена автоматично (литри × цена/л) - може да я коригираш ръчно според касовата бележка.</div>
       </div>
       <div class="mb-3">
         <label class="form-label">Бележка</label>
@@ -56,4 +62,26 @@
     </form>
   </div>
 </div>
+<script>
+(function () {
+  var liters = document.getElementById('liters');
+  var price = document.getElementById('price');
+  var total = document.getElementById('total');
+  function recalc() {
+    var l = parseFloat(liters.value);
+    var p = parseFloat(price.value);
+    if (!isNaN(l) && !isNaN(p)) {
+      total.value = (l * p).toFixed(2);
+    }
+  }
+  // Автоматично смятаме сумата само докато потребителят не я е пипал ръчно.
+  var totalTouched = {{ 'true' if values.get('total') else 'false' }};
+  total.addEventListener('input', function () { totalTouched = true; });
+  [liters, price].forEach(function (el) {
+    el.addEventListener('input', function () {
+      if (!totalTouched) recalc();
+    });
+  });
+})();
+</script>
 {% endblock %}
