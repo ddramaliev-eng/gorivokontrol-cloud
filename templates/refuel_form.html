@@ -57,9 +57,14 @@
         <label class="form-label">Бележка</label>
         <input type="text" name="note" class="form-control" value="{{ values.get('note','') }}">
       </div>
-      <button type="submit" class="btn btn-success">Запази</button>
+      <button type="submit" class="btn btn-success">Запази{% if not refuel %} и добави следващо{% endif %}</button>
       <a href="{{ url_for('refuels_list') }}" class="btn btn-secondary">Откажи</a>
     </form>
+    {% if not refuel and values.get('vehicle_id') %}
+    <hr>
+    <a href="{{ url_for('refuel_add_finish') }}" class="btn btn-outline-primary btn-sm">✓ Приключих с този автомобил</a>
+    <div class="form-text mt-1">Автомобилът остава избран автоматично за следващото зареждане, докато не натиснеш това.</div>
+    {% endif %}
   </div>
 </div>
 <script>

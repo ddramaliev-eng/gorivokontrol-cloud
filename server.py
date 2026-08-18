@@ -364,7 +364,11 @@ def refuel_add():
         return redirect(url_for("vehicle_add"))
 
     warning = None
-    form_values = {"date": date.today().isoformat()}
+    # ПОПРАВКА: докато въвежда няколко зареждания подред за един и същ
+    # автомобил, потребителят не иска да го избира всеки път наново -
+    # пазим последно използвания автомобил в сесията, докато не натисне
+    # "Приключих с този автомобил".
+    form_values = {"date": date.today().isoformat(), "vehicle_id": session.get("last_refuel_vehicle_id", "")}
 
     if request.method == "POST":
         form_values = dict(request.form)
@@ -397,8 +401,9 @@ def refuel_add():
                     (vid, date_iso, odo, liters, price, total, note),
                 )
                 db.commit()
-                flash("Записът е добавен.", "success")
-                return redirect(url_for("refuels_list"))
+                session["last_refuel_vehicle_id"] = vid
+                flash("Записът е добавен. Автомобилът остава избран за следващото зареждане.", "success")
+                return redirect(url_for("refuel_add"))
         except ValueError as e:
             flash(str(e), "danger")
 
@@ -406,6 +411,14 @@ def refuel_add():
         "refuel_form.html", vehicles=vehicles, refuel=None, values=form_values,
         title="Добави зареждане", warning=warning,
     )
+
+
+@app.route("/refuels/add/finish")
+@login_required
+def refuel_add_finish():
+    session.pop("last_refuel_vehicle_id", None)
+    flash("Готово - изборът на автомобил е освободен.", "success")
+    return redirect(url_for("refuels_list"))
 
 
 @app.route("/refuels/<int:rid>/edit", methods=["GET", "POST"])
