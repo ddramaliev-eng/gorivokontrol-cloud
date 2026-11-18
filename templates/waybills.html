@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}Пътни листове - GorivoKontrol Cloud{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h3>Пътни листове</h3>
+  <a href="{{ url_for('waybill_add') }}" class="btn btn-primary">+ Добави</a>
+</div>
+
+<form method="get" class="row g-2 mb-3">
+  <div class="col-auto">
+    <select name="vehicle" class="form-select">
+      <option value="">(всички автомобили)</option>
+      {% for v in vehicles %}
+      <option value="{{ v['registration'] }}" {% if vehicle_filter==v['registration'] %}selected{% endif %}>{{ v['registration'] }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="col-auto">
+    <button type="submit" class="btn btn-outline-secondary">Приложи</button>
+  </div>
+</form>
+
+<div class="table-responsive">
+<table class="table table-sm table-striped bg-white shadow-sm">
+  <thead>
+    <tr>
+      <th>Автомобил</th><th>Дата</th><th>Начален км</th><th>Краен км</th><th>Изминати км</th><th>Цена/км</th><th>Сума</th><th>Бележка</th><th></th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for w in items %}
+    <tr>
+      <td>{{ w.registration }}</td>
+      <td>{{ w.date }}</td>
+      <td>{{ '%.0f'|format(w.start_odometer) }}</td>
+      <td>{{ '%.0f'|format(w.end_odometer) }}</td>
+      <td>{{ '%.0f'|format(w.km) }}</td>
+      <td>{{ '%.2f'|format(w.price_per_km) }}</td>
+      <td>{{ '%.2f'|format(w.total_price) }}</td>
+      <td>{{ w.note or '' }}</td>
+      <td class="text-end">
+        <a href="{{ url_for('waybill_edit', wid=w.id) }}" class="btn btn-sm btn-warning">Редактирай</a>
+        <form method="post" action="{{ url_for('waybill_delete', wid=w.id) }}" class="d-inline"
+              onsubmit="return confirm('Сигурни ли сте, че искате да изтриете този запис?');">
+          <button type="submit" class="btn btn-sm btn-danger">Изтрий</button>
+        </form>
+      </td>
+    </tr>
+    {% else %}
+    <tr><td colspan="9" class="text-center text-muted">Няма записи.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

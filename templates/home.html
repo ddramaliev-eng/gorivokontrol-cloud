@@ -22,6 +22,14 @@
       </div>
     </div>
   </div>
+  <div class="col-md-3">
+    <div class="card text-center shadow-sm">
+      <div class="card-body">
+        <div class="fs-2">{{ total_waybills }}</div>
+        <div class="text-muted">Пътни листове</div>
+      </div>
+    </div>
+  </div>
   {% for fuel_type, count in fuel_stats %}
   <div class="col-md-3">
     <div class="card text-center shadow-sm">
@@ -37,6 +45,8 @@
 <div class="mt-4">
   <a href="{{ url_for('vehicle_add') }}" class="btn btn-success">+ Автомобил</a>
   <a href="{{ url_for('refuel_add') }}" class="btn btn-primary">+ Зареждане</a>
+  <a href="{{ url_for('waybill_add') }}" class="btn btn-primary">+ Пътен лист</a>
+  <a href="{{ url_for('refuels_bulk') }}" class="btn btn-outline-primary">📥 Масово добавяне</a>
   <a href="{{ url_for('reports') }}" class="btn btn-outline-secondary">📊 Отчети</a>
 </div>
 {% endblock %}

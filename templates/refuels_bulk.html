@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}Масово добавяне на зареждания - GorivoKontrol Cloud{% endblock %}
+{% block content %}
+<h3 class="mb-3">📥 Масово добавяне на зареждания</h3>
+<p class="text-muted">
+  Постави редове във формат (разделени с <code>|</code>):<br>
+  <code>регистрация|дата|километри|литри|цена_за_литър|сума|бележка</code><br>
+  Полетата <strong>сума</strong> и <strong>бележка</strong> са незадължителни (сумата се смята автоматично като литри × цена, ако не е посочена).
+  Датата може да е <code>ГГГГ-ММ-ДД</code> или <code>дд.мм.гггг</code>. Редове, започващи с <code>#</code>, се пропускат.
+</p>
+
+<div class="card shadow-sm mb-4">
+  <div class="card-body">
+    <form method="post">
+      <div class="mb-3">
+        <textarea name="raw_text" class="form-control" rows="10" style="font-family:monospace;" placeholder="CM5876|2026-10-13|823868|90.100|1.81|163.08|Алфа бензиностанция">{{ raw_text }}</textarea>
+      </div>
+      <button type="submit" name="action" value="preview" class="btn btn-outline-primary">👁 Прегледай</button>
+      {% if parsed_rows %}
+      {% set insertable = parsed_rows | selectattr('status', 'ne', 'error') | list %}
+      {% if insertable %}
+      <button type="submit" name="action" value="confirm" class="btn btn-success">✅ Потвърди и добави {{ insertable|length }} запис{{ 'а' if insertable|length != 1 else '' }}</button>
+      {% endif %}
+      {% endif %}
+      <a href="{{ url_for('refuels_list') }}" class="btn btn-secondary">Откажи</a>
+    </form>
+  </div>
+</div>
+
+{% if parsed_rows is not none %}
+<h5>Преглед ({{ parsed_rows|length }} ред{{ 'а' if parsed_rows|length != 1 else '' }})</h5>
+<div class="table-responsive">
+<table class="table table-sm table-bordered bg-white shadow-sm">
+  <thead>
+    <tr>
+      <th>Статус</th><th>Автомобил</th><th>Дата</th><th>Км</th><th>Литри</th><th>Цена/л</th><th>Сума</th><th>Бележка</th><th>Съобщение</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for row in parsed_rows %}
+    <tr class="{{ 'table-danger' if row.status=='error' else ('table-warning' if row.status=='warning' else '') }}">
+      <td>
+        {% if row.status == 'error' %}❌ грешка
+        {% elif row.status == 'warning' %}⚠️ внимание
+        {% else %}✅ ок{% endif %}
+      </td>
+      <td>{{ row.get('registration','') }}</td>
+      <td>{{ row.get('date_iso','') }}</td>
+      <td>{{ row.get('odometer','') }}</td>
+      <td>{{ row.get('liters','') }}</td>
+      <td>{{ row.get('price','') }}</td>
+      <td>{{ row.get('total','') }}</td>
+      <td>{{ row.get('note','') }}</td>
+      <td class="text-muted" style="font-size:.85rem;">{{ row.message }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+<p class="text-muted">Редовете с грешка няма да бъдат добавени. Редовете с "внимание" ще бъдат добавени, но проверете километража.</p>
+{% endif %}
+{% endblock %}

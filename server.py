@@ -154,6 +154,20 @@ def init_db():
             FOREIGN KEY(vehicle_id) REFERENCES vehicles(id)
         )
     """)
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS waybills (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            vehicle_id INTEGER,
+            date TEXT,
+            start_odometer REAL,
+            end_odometer REAL,
+            km REAL,
+            price_per_km REAL,
+            total_price REAL,
+            note TEXT,
+            FOREIGN KEY(vehicle_id) REFERENCES vehicles(id)
+        )
+    """)
     conn.commit()
     conn.close()
 
@@ -177,6 +191,23 @@ def get_max_odometer(db, vehicle_id, exclude_refuel_id=None):
             "SELECT MAX(odometer) FROM refuels WHERE vehicle_id=?", (vehicle_id,)
         ).fetchone()
     return row[0] if row and row[0] is not None else None
+
+
+def get_last_known_odometer(db, vehicle_id):
+    """Последен известен километраж за автомобила - от пътни листове или
+    зареждания - за да предложим начален км на следващия пътен лист."""
+    candidates = []
+    row = db.execute(
+        "SELECT MAX(end_odometer) FROM waybills WHERE vehicle_id=?", (vehicle_id,)
+    ).fetchone()
+    if row and row[0] is not None:
+        candidates.append(row[0])
+    row = db.execute(
+        "SELECT MAX(odometer) FROM refuels WHERE vehicle_id=?", (vehicle_id,)
+    ).fetchone()
+    if row and row[0] is not None:
+        candidates.append(row[0])
+    return max(candidates) if candidates else None
 
 
 # ---------------- Автентикация ----------------
@@ -214,6 +245,7 @@ def home():
     db = get_db()
     total_vehicles = db.execute("SELECT COUNT(*) FROM vehicles").fetchone()[0]
     total_refuels = db.execute("SELECT COUNT(*) FROM refuels").fetchone()[0]
+    total_waybills = db.execute("SELECT COUNT(*) FROM waybills").fetchone()[0]
     fuel_stats = db.execute(
         "SELECT fuel_type, COUNT(*) FROM vehicles GROUP BY fuel_type"
     ).fetchall()
@@ -221,6 +253,7 @@ def home():
         "home.html",
         total_vehicles=total_vehicles,
         total_refuels=total_refuels,
+        total_waybills=total_waybills,
         fuel_stats=fuel_stats,
         eur_rate=EUR_BGN_FIXED_RATE,
     )
@@ -484,6 +517,270 @@ def refuel_delete(rid):
     db.commit()
     flash("Записът е изтрит.", "success")
     return redirect(url_for("refuels_list"))
+
+
+def _parse_bulk_refuel_line(db, raw_line, vehicle_running_max):
+    """Парсира един ред от масовото въвеждане:
+    регистрация|дата|километри|литри|цена/л|сума|бележка
+    (последните две полета - сума и бележка - са незадължителни)."""
+    parts = [p.strip() for p in raw_line.split("|")]
+    row = {"raw": raw_line, "status": "ok", "message": ""}
+
+    if len(parts) < 5:
+        row["status"] = "error"
+        row["message"] = ("Очакват се поне 5 полета, разделени с \"|\": "
+                           "регистрация|дата|километри|литри|цена")
+        return row
+
+    reg, date_s, odo_s, liters_s, price_s = parts[:5]
+    total_s = parts[5] if len(parts) > 5 else ""
+    note = parts[6] if len(parts) > 6 else ""
+    row["registration"] = reg
+    row["note"] = note
+
+    vehicle = db.execute(
+        "SELECT id, registration FROM vehicles WHERE LOWER(registration)=LOWER(?)", (reg,)
+    ).fetchone()
+    if not vehicle:
+        row["status"] = "error"
+        row["message"] = f"Автомобил с рег. номер \"{reg}\" не е намерен в системата."
+        return row
+    vid = vehicle["id"]
+    row["vehicle_id"] = vid
+
+    try:
+        date_iso = date_s
+        if "." in date_s:
+            d, m, y = date_s.split(".")
+            date_iso = f"{y}-{int(m):02d}-{int(d):02d}"
+        validate_date_not_future(date_iso)
+        row["date_iso"] = date_iso
+    except Exception:
+        row["status"] = "error"
+        row["message"] = f"Невалидна дата: \"{date_s}\" (очаква се ГГГГ-МM-ДД или дд.мм.гггг)"
+        return row
+
+    try:
+        odo = validate_positive_float(odo_s, "Километри")
+        liters = validate_positive_float(liters_s, "Литри")
+        price = validate_positive_float(price_s, "Цена")
+        total = validate_positive_float(total_s, "Сума") if total_s else (liters * price)
+    except ValueError as e:
+        row["status"] = "error"
+        row["message"] = str(e)
+        return row
+
+    row["odometer"] = odo
+    row["liters"] = liters
+    row["price"] = price
+    row["total"] = total
+
+    if vid not in vehicle_running_max:
+        vehicle_running_max[vid] = get_max_odometer(db, vid) or 0
+    prev_max = vehicle_running_max[vid]
+    if odo < prev_max:
+        row["status"] = "warning"
+        row["message"] = (f"Километражът ({odo:.0f}) е по-малък от предходен запис за "
+                           f"същия автомобил ({prev_max:.0f}). Ще бъде добавен, но провери реда.")
+    vehicle_running_max[vid] = max(prev_max, odo)
+    return row
+
+
+def _parse_bulk_refuels(db, raw_text):
+    vehicle_running_max = {}
+    parsed = []
+    for line in raw_text.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        parsed.append(_parse_bulk_refuel_line(db, line, vehicle_running_max))
+    return parsed
+
+
+@app.route("/refuels/bulk", methods=["GET", "POST"])
+@login_required
+def refuels_bulk():
+    db = get_db()
+    raw_text = ""
+    parsed_rows = None
+
+    if request.method == "POST":
+        raw_text = request.form.get("raw_text", "")
+        action = request.form.get("action", "preview")
+        parsed_rows = _parse_bulk_refuels(db, raw_text)
+
+        if action == "confirm":
+            inserted = 0
+            skipped = 0
+            for row in parsed_rows:
+                if row["status"] == "error":
+                    skipped += 1
+                    continue
+                db.execute(
+                    """INSERT INTO refuels (vehicle_id, date, odometer, liters, price_per_liter, total_price, note)
+                       VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                    (row["vehicle_id"], row["date_iso"], row["odometer"], row["liters"],
+                     row["price"], row["total"], row["note"]),
+                )
+                inserted += 1
+            db.commit()
+            msg = f"Добавени {inserted} записа."
+            if skipped:
+                msg += f" Пропуснати {skipped} заради грешки."
+            flash(msg, "success")
+            return redirect(url_for("refuels_list"))
+
+    return render_template("refuels_bulk.html", raw_text=raw_text, parsed_rows=parsed_rows)
+
+
+# ---------------- Пътни листове ----------------
+@app.route("/waybills")
+@login_required
+def waybills_list():
+    db = get_db()
+    vehicle_filter = request.args.get("vehicle", "")
+    vehicles = db.execute("SELECT id, registration FROM vehicles ORDER BY registration").fetchall()
+
+    if vehicle_filter:
+        rows = db.execute(
+            """SELECT w.id, v.registration, w.date, w.start_odometer, w.end_odometer,
+                      w.km, w.price_per_km, w.total_price, w.note
+               FROM waybills w JOIN vehicles v ON w.vehicle_id=v.id
+               WHERE v.registration=? ORDER BY w.date""",
+            (vehicle_filter,),
+        ).fetchall()
+    else:
+        rows = db.execute(
+            """SELECT w.id, v.registration, w.date, w.start_odometer, w.end_odometer,
+                      w.km, w.price_per_km, w.total_price, w.note
+               FROM waybills w JOIN vehicles v ON w.vehicle_id=v.id
+               ORDER BY w.date"""
+        ).fetchall()
+
+    return render_template(
+        "waybills.html", items=rows, vehicles=vehicles, vehicle_filter=vehicle_filter,
+    )
+
+
+def _waybill_fields_from_form():
+    start = validate_positive_float(request.form.get("start_odometer"), "Начален километраж")
+    end = validate_positive_float(request.form.get("end_odometer"), "Краен километраж")
+    if end < start:
+        raise ValueError("Крайният километраж не може да бъде по-малък от началния.")
+    km = end - start
+    price_per_km = validate_positive_float(request.form.get("price_per_km"), "Цена/км")
+    total_raw = request.form.get("total")
+    total = validate_positive_float(total_raw, "Сума") if total_raw else (km * price_per_km)
+    return start, end, km, price_per_km, total
+
+
+@app.route("/waybills/add", methods=["GET", "POST"])
+@login_required
+def waybill_add():
+    db = get_db()
+    vehicles = db.execute("SELECT id, registration FROM vehicles ORDER BY registration").fetchall()
+    if not vehicles:
+        flash("Няма добавени автомобили. Добавете автомобил първо.", "warning")
+        return redirect(url_for("vehicle_add"))
+
+    last_vid = session.get("last_waybill_vehicle_id", "")
+    suggested_start = ""
+    if last_vid:
+        last_odo = get_last_known_odometer(db, int(last_vid))
+        if last_odo is not None:
+            suggested_start = last_odo
+
+    form_values = {
+        "date": date.today().isoformat(),
+        "vehicle_id": last_vid,
+        "start_odometer": suggested_start,
+    }
+
+    if request.method == "POST":
+        form_values = dict(request.form)
+        try:
+            vid = int(request.form.get("vehicle_id"))
+            date_iso = request.form.get("date", "")
+            validate_date_not_future(date_iso)
+            start, end, km, price_per_km, total = _waybill_fields_from_form()
+            note = (request.form.get("note") or "").strip()
+
+            db.execute(
+                """INSERT INTO waybills (vehicle_id, date, start_odometer, end_odometer, km, price_per_km, total_price, note)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                (vid, date_iso, start, end, km, price_per_km, total, note),
+            )
+            db.commit()
+            session["last_waybill_vehicle_id"] = vid
+            flash("Пътният лист е добавен. Автомобилът остава избран за следващия.", "success")
+            return redirect(url_for("waybill_add"))
+        except ValueError as e:
+            flash(str(e), "danger")
+
+    return render_template(
+        "waybill_form.html", vehicles=vehicles, waybill=None, values=form_values,
+        title="Добави пътен лист",
+    )
+
+
+@app.route("/waybills/add/finish")
+@login_required
+def waybill_add_finish():
+    session.pop("last_waybill_vehicle_id", None)
+    flash("Готово - изборът на автомобил е освободен.", "success")
+    return redirect(url_for("waybills_list"))
+
+
+@app.route("/waybills/<int:wid>/edit", methods=["GET", "POST"])
+@login_required
+def waybill_edit(wid):
+    db = get_db()
+    waybill = db.execute("SELECT * FROM waybills WHERE id=?", (wid,)).fetchone()
+    if not waybill:
+        abort(404)
+    vehicles = db.execute("SELECT id, registration FROM vehicles ORDER BY registration").fetchall()
+
+    form_values = {
+        "vehicle_id": waybill["vehicle_id"], "date": waybill["date"],
+        "start_odometer": waybill["start_odometer"], "end_odometer": waybill["end_odometer"],
+        "price_per_km": waybill["price_per_km"], "total": waybill["total_price"],
+        "note": waybill["note"],
+    }
+
+    if request.method == "POST":
+        form_values = dict(request.form)
+        try:
+            vid = int(request.form.get("vehicle_id"))
+            date_iso = request.form.get("date", "")
+            validate_date_not_future(date_iso)
+            start, end, km, price_per_km, total = _waybill_fields_from_form()
+            note = (request.form.get("note") or "").strip()
+
+            db.execute(
+                """UPDATE waybills SET vehicle_id=?, date=?, start_odometer=?, end_odometer=?,
+                       km=?, price_per_km=?, total_price=?, note=? WHERE id=?""",
+                (vid, date_iso, start, end, km, price_per_km, total, note, wid),
+            )
+            db.commit()
+            flash("Промените са запазени.", "success")
+            return redirect(url_for("waybills_list"))
+        except ValueError as e:
+            flash(str(e), "danger")
+
+    return render_template(
+        "waybill_form.html", vehicles=vehicles, waybill=waybill, values=form_values,
+        title="Редактирай пътен лист",
+    )
+
+
+@app.route("/waybills/<int:wid>/delete", methods=["POST"])
+@login_required
+def waybill_delete(wid):
+    db = get_db()
+    db.execute("DELETE FROM waybills WHERE id=?", (wid,))
+    db.commit()
+    flash("Записът е изтрит.", "success")
+    return redirect(url_for("waybills_list"))
 
 
 # ---------------- Отчети ----------------

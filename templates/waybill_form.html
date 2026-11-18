@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+{% block title %}{{ title }} - GorivoKontrol Cloud{% endblock %}
+{% block content %}
+<h3 class="mb-3">{{ title }}</h3>
+
+<div class="card shadow-sm" style="max-width:520px;">
+  <div class="card-body">
+    <form method="post">
+      <div class="mb-3">
+        <label class="form-label">Автомобил</label>
+        <select name="vehicle_id" class="form-select" required>
+          <option value=""></option>
+          {% for v in vehicles %}
+          <option value="{{ v['id'] }}" {% if values.get('vehicle_id')|string == v['id']|string %}selected{% endif %}>{{ v['registration'] }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="mb-3">
+        <label class="form-label">Дата</label>
+        <input type="date" name="date" class="form-control" required value="{{ values.get('date','') }}">
+      </div>
+      <div class="mb-3">
+        <label class="form-label">Начален километраж</label>
+        <input type="number" step="0.01" id="start_odometer" name="start_odometer" class="form-control" required value="{{ values.get('start_odometer','') }}">
+      </div>
+      <div class="mb-3">
+        <label class="form-label">Краен километраж</label>
+        <input type="number" step="0.01" id="end_odometer" name="end_odometer" class="form-control" required value="{{ values.get('end_odometer','') }}">
+      </div>
+      <div class="mb-3">
+        <label class="form-label">Изминати километри</label>
+        <input type="text" id="km_display" class="form-control" disabled>
+      </div>
+      <div class="mb-3">
+        <label class="form-label">Цена/км</label>
+        <input type="number" step="0.001" id="price_per_km" name="price_per_km" class="form-control" required value="{{ values.get('price_per_km','') }}">
+      </div>
+      <div class="mb-3">
+        <label class="form-label">Сума</label>
+        <input type="number" step="0.01" id="total" name="total" class="form-control" required value="{{ values.get('total','') }}">
+        <div class="form-text">Предложена автоматично (изминати км × цена/км) - може да я коригираш ръчно.</div>
+      </div>
+      <div class="mb-3">
+        <label class="form-label">Бележка</label>
+        <input type="text" name="note" class="form-control" value="{{ values.get('note','') }}">
+      </div>
+      <button type="submit" class="btn btn-success">Запази{% if not waybill %} и добави следващ{% endif %}</button>
+      <a href="{{ url_for('waybills_list') }}" class="btn btn-secondary">Откажи</a>
+    </form>
+    {% if not waybill and values.get('vehicle_id') %}
+    <hr>
+    <a href="{{ url_for('waybill_add_finish') }}" class="btn btn-outline-primary btn-sm">✓ Приключих с този автомобил</a>
+    <div class="form-text mt-1">Автомобилът остава избран автоматично за следващия пътен лист, докато не натиснеш това.</div>
+    {% endif %}
+  </div>
+</div>
+<script>
+(function () {
+  var startEl = document.getElementById('start_odometer');
+  var endEl = document.getElementById('end_odometer');
+  var priceEl = document.getElementById('price_per_km');
+  var total = document.getElementById('total');
+  var kmDisplay = document.getElementById('km_display');
+
+  function currentKm() {
+    var s = parseFloat(startEl.value);
+    var e = parseFloat(endEl.value);
+    if (!isNaN(s) && !isNaN(e) && e >= s) return e - s;
+    return null;
+  }
+
+  function updateKmDisplay() {
+    var km = currentKm();
+    kmDisplay.value = km === null ? '' : km.toFixed(2);
+  }
+
+  function recalcTotal() {
+    var km = currentKm();
+    var p = parseFloat(priceEl.value);
+    if (km !== null && !isNaN(p)) {
+      total.value = (km * p).toFixed(2);
+    }
+  }
+
+  var totalTouched = {{ 'true' if values.get('total') else 'false' }};
+  total.addEventListener('input', function () { totalTouched = true; });
+  [startEl, endEl, priceEl].forEach(function (el) {
+    el.addEventListener('input', function () {
+      updateKmDisplay();
+      if (!totalTouched) recalcTotal();
+    });
+  });
+  updateKmDisplay();
+})();
+</script>
+{% endblock %}
