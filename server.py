@@ -519,7 +519,36 @@ def refuel_delete(rid):
     return redirect(url_for("refuels_list"))
 
 
-def _parse_bulk_refuel_line(db, raw_line, vehicle_running_max):
+# Българските регистрационни номера се пишат с кирилски букви, но визуално
+# изглеждат като латински (А/A, В/B, Е/E, К/K, М/M, Н/H, О/O, Р/P, С/C, Т/T,
+# У/Y, Х/X). При ръчно въвеждане или копиране от разписка лесно се разбъркват
+# двете азбуки - затова при сравнение винаги превеждаме към кирилица, за да
+# не пропускаме съвпадения само заради използваната азбука.
+_LATIN_TO_CYR_PLATE = {
+    "A": "А", "B": "В", "E": "Е", "K": "К", "M": "М", "H": "Н", "O": "О",
+    "P": "Р", "C": "С", "T": "Т", "Y": "У", "X": "Х",
+}
+
+
+def _normalize_plate(reg):
+    reg = (reg or "").strip().upper()
+    return "".join(_LATIN_TO_CYR_PLATE.get(ch, ch) for ch in reg)
+
+
+def _match_vehicle(vehicles_by_norm, reg):
+    """Търси точно съвпадение по нормализирана регистрация; ако няма, пробва
+    дали нормализираният номер е еднозначен префикс на точно един автомобил
+    (напр. разписка с "СМ5876" да съвпадне с пълния номер "СМ5876АХ")."""
+    norm = _normalize_plate(reg)
+    if norm in vehicles_by_norm:
+        return vehicles_by_norm[norm]
+    prefix_matches = [v for key, v in vehicles_by_norm.items() if key.startswith(norm)]
+    if len(prefix_matches) == 1:
+        return prefix_matches[0]
+    return None
+
+
+def _parse_bulk_refuel_line(db, raw_line, vehicles_by_norm, vehicle_running_max):
     """Парсира един ред от масовото въвеждане:
     регистрация|дата|километри|литри|цена/л|сума|бележка
     (последните две полета - сума и бележка - са незадължителни)."""
@@ -538,15 +567,14 @@ def _parse_bulk_refuel_line(db, raw_line, vehicle_running_max):
     row["registration"] = reg
     row["note"] = note
 
-    vehicle = db.execute(
-        "SELECT id, registration FROM vehicles WHERE LOWER(registration)=LOWER(?)", (reg,)
-    ).fetchone()
+    vehicle = _match_vehicle(vehicles_by_norm, reg)
     if not vehicle:
         row["status"] = "error"
         row["message"] = f"Автомобил с рег. номер \"{reg}\" не е намерен в системата."
         return row
     vid = vehicle["id"]
     row["vehicle_id"] = vid
+    row["matched_registration"] = vehicle["registration"]
 
     try:
         date_iso = date_s
@@ -587,13 +615,15 @@ def _parse_bulk_refuel_line(db, raw_line, vehicle_running_max):
 
 
 def _parse_bulk_refuels(db, raw_text):
+    all_vehicles = db.execute("SELECT id, registration FROM vehicles").fetchall()
+    vehicles_by_norm = {_normalize_plate(v["registration"]): v for v in all_vehicles}
     vehicle_running_max = {}
     parsed = []
     for line in raw_text.splitlines():
         line = line.strip()
         if not line or line.startswith("#"):
             continue
-        parsed.append(_parse_bulk_refuel_line(db, line, vehicle_running_max))
+        parsed.append(_parse_bulk_refuel_line(db, line, vehicles_by_norm, vehicle_running_max))
     return parsed
 
 

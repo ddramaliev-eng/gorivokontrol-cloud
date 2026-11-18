@@ -44,7 +44,12 @@
         {% elif row.status == 'warning' %}⚠️ внимание
         {% else %}✅ ок{% endif %}
       </td>
-      <td>{{ row.get('registration','') }}</td>
+      <td>
+        {{ row.get('registration','') }}
+        {% if row.get('matched_registration') and row.get('matched_registration') != row.get('registration') %}
+        <div class="text-muted" style="font-size:.8rem;">→ {{ row.matched_registration }}</div>
+        {% endif %}
+      </td>
       <td>{{ row.get('date_iso','') }}</td>
       <td>{{ row.get('odometer','') }}</td>
       <td>{{ row.get('liters','') }}</td>
