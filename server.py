@@ -409,7 +409,10 @@ def refuel_add():
             vid = int(request.form.get("vehicle_id"))
             date_iso = request.form.get("date", "")
             validate_date_not_future(date_iso)
-            odo = validate_positive_float(request.form.get("odometer"), "Километри")
+            # Километражът е незадължителен - някои превозни средства (напр.
+            # леки автомобили на фирмена карта) не се следят по пробег.
+            odo_raw = (request.form.get("odometer") or "").strip()
+            odo = validate_positive_float(odo_raw, "Километри") if odo_raw else None
             liters = validate_positive_float(request.form.get("liters"), "Литри")
             price = validate_positive_float(request.form.get("price"), "Цена")
             # ПОПРАВКА: сумата вече е отделно поле (автоматично се предлага
@@ -421,7 +424,7 @@ def refuel_add():
 
             max_odo = get_max_odometer(db, vid)
             confirmed = request.form.get("confirm") == "1"
-            if max_odo is not None and odo < max_odo and not confirmed:
+            if odo is not None and max_odo is not None and odo < max_odo and not confirmed:
                 warning = (
                     f"Въведеният километраж ({odo:.0f} км) е по-малък от последния "
                     f"записан за този автомобил ({max_odo:.0f} км). Това ще доведе до "
@@ -466,7 +469,8 @@ def refuel_edit(rid):
     warning = None
     form_values = {
         "vehicle_id": refuel["vehicle_id"], "date": refuel["date"],
-        "odometer": refuel["odometer"], "liters": refuel["liters"],
+        "odometer": refuel["odometer"] if refuel["odometer"] is not None else "",
+        "liters": refuel["liters"],
         "price": refuel["price_per_liter"], "total": refuel["total_price"], "note": refuel["note"],
     }
 
@@ -476,7 +480,8 @@ def refuel_edit(rid):
             vid = int(request.form.get("vehicle_id"))
             date_iso = request.form.get("date", "")
             validate_date_not_future(date_iso)
-            odo = validate_positive_float(request.form.get("odometer"), "Километри")
+            odo_raw = (request.form.get("odometer") or "").strip()
+            odo = validate_positive_float(odo_raw, "Километри") if odo_raw else None
             liters = validate_positive_float(request.form.get("liters"), "Литри")
             price = validate_positive_float(request.form.get("price"), "Цена")
             total_raw = request.form.get("total")
@@ -485,7 +490,7 @@ def refuel_edit(rid):
 
             max_odo = get_max_odometer(db, vid, exclude_refuel_id=rid)
             confirmed = request.form.get("confirm") == "1"
-            if max_odo is not None and odo < max_odo and not confirmed:
+            if odo is not None and max_odo is not None and odo < max_odo and not confirmed:
                 warning = (
                     f"Въведеният километраж ({odo:.0f} км) е по-малък от последния "
                     f"записан за този автомобил ({max_odo:.0f} км). Това ще доведе до "
@@ -589,7 +594,9 @@ def _parse_bulk_refuel_line(db, raw_line, vehicles_by_norm, vehicle_running_max)
         return row
 
     try:
-        odo = validate_positive_float(odo_s, "Километри")
+        # Километражът е незадължителен - празно поле означава, че за това
+        # превозно средство не се следи пробег (напр. лек автомобил).
+        odo = validate_positive_float(odo_s, "Километри") if odo_s else None
         liters = validate_positive_float(liters_s, "Литри")
         price = validate_positive_float(price_s, "Цена")
         total = validate_positive_float(total_s, "Сума") if total_s else (liters * price)
@@ -603,14 +610,15 @@ def _parse_bulk_refuel_line(db, raw_line, vehicles_by_norm, vehicle_running_max)
     row["price"] = price
     row["total"] = total
 
-    if vid not in vehicle_running_max:
-        vehicle_running_max[vid] = get_max_odometer(db, vid) or 0
-    prev_max = vehicle_running_max[vid]
-    if odo < prev_max:
-        row["status"] = "warning"
-        row["message"] = (f"Километражът ({odo:.0f}) е по-малък от предходен запис за "
-                           f"същия автомобил ({prev_max:.0f}). Ще бъде добавен, но провери реда.")
-    vehicle_running_max[vid] = max(prev_max, odo)
+    if odo is not None:
+        if vid not in vehicle_running_max:
+            vehicle_running_max[vid] = get_max_odometer(db, vid) or 0
+        prev_max = vehicle_running_max[vid]
+        if odo < prev_max:
+            row["status"] = "warning"
+            row["message"] = (f"Километражът ({odo:.0f}) е по-малък от предходен запис за "
+                               f"същия автомобил ({prev_max:.0f}). Ще бъде добавен, но провери реда.")
+        vehicle_running_max[vid] = max(prev_max, odo)
     return row
 
 
@@ -845,9 +853,12 @@ def _build_report_data(db, vehicle, fuel_filter, grouping):
             g_ = groups.setdefault(key, {"liters": 0.0, "price": 0.0, "start_odo": None, "end_odo": None})
             g_["liters"] += row["liters"]
             g_["price"] += row["total_price"]
-            if g_["start_odo"] is None:
-                g_["start_odo"] = row["odometer"]
-            g_["end_odo"] = row["odometer"]
+            # Зареждания без въведен километраж (по избор, виж refuel_add) не
+            # участват в изчислението на изминати км за периода.
+            if row["odometer"] is not None:
+                if g_["start_odo"] is None:
+                    g_["start_odo"] = row["odometer"]
+                g_["end_odo"] = row["odometer"]
     else:
         # авто-парк: км се смятат по превозно средство, после се сумират за периода
         veh_bucket = {}
@@ -872,9 +883,10 @@ def _build_report_data(db, vehicle, fuel_filter, grouping):
         else:
             km = 0
             for reg, data in veh_bucket.get(k, {}).items():
-                if len(data) > 1:
-                    data.sort()
-                    km += data[-1][1] - data[0][1]
+                valid = [d for d in data if d[1] is not None]
+                if len(valid) > 1:
+                    valid.sort()
+                    km += valid[-1][1] - valid[0][1]
         kms.append(km)
         liters_k = groups[k]["liters"]
         consumptions.append((liters_k / km * 100) if km > 0 else 0)

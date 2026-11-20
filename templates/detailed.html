@@ -42,7 +42,7 @@
       <td>{{ r.date }}</td>
       <td>{{ r.registration }}</td>
       <td>{{ r.fuel_type or '' }}</td>
-      <td>{{ '%.0f'|format(r.odometer) }}</td>
+      <td>{{ '%.0f'|format(r.odometer) if r.odometer is not none else '-' }}</td>
       <td>{{ '%.2f'|format(r.liters) }}</td>
       <td>{{ '%.2f'|format(r.price) }}</td>
       <td>{{ '%.2f'|format(r.total) }}</td>
